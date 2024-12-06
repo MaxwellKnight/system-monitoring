@@ -1,5 +1,21 @@
-bin/
-obj/
-*.cache
-*.pdb
+# Build & Binary
+[Bb]in/
+[Oo]bj/
+[Ll]ogs/
 *.dll
+*.pdb
+*.exe
+
+*.swp
+*.swo
+*~
+.vim/
+
+# .NET specific
+*.user
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Docker
+.docker/
