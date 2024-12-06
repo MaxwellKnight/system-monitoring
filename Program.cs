@@ -1,35 +1,86 @@
 ﻿using MonitoringAgent.MetricsCollectors;
+using MonitoringAgent.Networking;
+using MonitoringAgent.Logs;
 
-var cts = new CancellationTokenSource();
-Console.CancelKeyPress += (s, e) =>
+public class MonitoringService
 {
-	e.Cancel = true;
-	cts.Cancel();
-};
+	private readonly int _port;
+	private readonly string _serverHost;
+	private readonly int _collectionIntervalMs;
 
-try
-{
-	while (!cts.Token.IsCancellationRequested)
+	public MonitoringService(string serverHost, int port, int collectionIntervalMs = 5000)
+	{
+		_serverHost = serverHost;
+		_port = port;
+		_collectionIntervalMs = collectionIntervalMs;
+	}
+
+	public async Task CollectAndSendMetrics()
+	{
+		while (true)
+		{
+			var metrics = CollectSystemMetrics();
+			await SendMetricsToServer(metrics);
+			await Task.Delay(_collectionIntervalMs);
+		}
+	}
+
+	private string CollectSystemMetrics()
 	{
 		var (cpu, memory) = CPUMemoryCollector.Collect();
 		var (diskGB, networkMBps) = DiskNetworkCollector.Collect();
-		var (sysMetrics, top10Procs) = ProcessThreadCollector.Collect();
+		var (_, top10Procs) = ProcessThreadCollector.Collect();
 
-		Console.WriteLine($"""
-           [{DateTime.Now:yyyy-MM-dd HH:mm:ss}]
-           System:
-             CPU: {cpu:F1}%, Memory: {memory:F0}MB
-             Disk Used: {diskGB:F1}GB, Network: {networkMBps:F1}MB/s
-             Processes: {sysMetrics.ProcessId}, Threads: {sysMetrics.ThreadCount}
+		return $"""
+            CPU: {cpu:F1}%, Memory: {memory:F0}MB
+            Disk Used: {diskGB:F1}GB, Network: {networkMBps:F1}MB/s
+            Top CPU Processes: {string.Join(", ", top10Procs.Select(p => $"{p.Name} ({p.CpuPercent:F1}%)"))}
+            """;
+	}
 
-           Top CPU Processes:
-           {string.Join("\n", top10Procs.Select(p => $"  {p.Name}: {p.CpuPercent:F1}% CPU, {p.WorkingSet:F0}MB RAM"))}
-           """);
-
-		await Task.Delay(5000, cts.Token);
+	private Task SendMetricsToServer(string metrics)
+	{
+		Client.SendData(_serverHost, _port, metrics);
+		return Task.CompletedTask;
 	}
 }
-catch (OperationCanceledException)
+
+public class Program
 {
-	Console.WriteLine("Monitoring stopped.");
+	private const int DefaultPort = 5000;
+
+	public static async Task Main(string[] args)
+	{
+		var mode = args.FirstOrDefault()?.ToLower() ?? "server";
+
+		try
+		{
+			await RunMode(mode);
+		}
+		catch (Exception ex)
+		{
+			LoggingHelper.Log($"Fatal error: {ex.Message}");
+			Environment.Exit(1);
+		}
+	}
+
+	private static async Task RunMode(string mode)
+	{
+		switch (mode)
+		{
+			case "server":
+				LoggingHelper.Log("Running in Server mode...");
+				await Server.StartServer(DefaultPort);
+				break;
+
+			case "client":
+				LoggingHelper.Log("Running in Client mode...");
+				var service = new MonitoringService("server", DefaultPort);
+				await service.CollectAndSendMetrics();
+				break;
+
+			default:
+				throw new ArgumentException("Invalid mode. Use 'server' or 'client'.");
+		}
+	}
 }
