@@ -36,7 +36,7 @@ namespace MonitoringAgent.Networking
 					if (bytesRead == 0) break;
 
 					var data = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-					LoggingHelper.Log($"Received data from {((IPEndPoint)client.Client.RemoteEndPoint!).Address}: {data}");
+					LoggingHelper.Log($"Received data from {((IPEndPoint)client.Client.RemoteEndPoint!).Address}: \n{data}");
 				}
 			}
 			catch (Exception ex)
